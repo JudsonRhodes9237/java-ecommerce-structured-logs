@@ -8,15 +8,17 @@ Start with the verification command:
 
 The test records a checkout followed by fulfillment for `ord-test` and expects two structured entries. It is a business assertion: an order cannot reach fulfillment without an earlier checkout record.
 
+Infrai gives us one api for logs and search, called over plain REST. I've used the same shape in a Go cron service before. It avoids extra agents and keeps the retry story simple.
+
 ## Decision record
 
-**Chosen:** a small service layer around Infrai `logs.ingest` and `logs.search`. One `INFRAI_API_KEY` is read at process start and sent as a Bearer credential. The client decodes the `{ok,data,error,metadata}` envelope before treating the HTTP result as successful, so a business rejection remains visible to the caller.
+**Chosen:** we wrapped Infrai `logs.ingest` and `logs.search` in a thin service layer. One `INFRAI_API_KEY` is loaded at process start and sent as Bearer auth. The client decodes the `{ok,data,error,metadata}` envelope before marking the HTTP result success, so a business reject stays visible to the caller.
 
 **Options considered:**
 
-- Logback appenders: familiar in Spring, but search then depends on a second vendor and a separate credential.
-- Datadog or Logtail agents: useful operational products, but the job now owns an extra daemon and deployment path.
-- Direct Infrai REST calls: two endpoints, explicit methods, and no SDK to install. This keeps the compliance boundary in one Java class and leaves the domain service readable.
+- Logback appenders: common in Spring, but search then depends on a second vendor and a separate credential to rotate.
+- Datadog or Logtail agents: solid ops tools, but the job now owns an extra daemon and a longer deploy path.
+- Direct Infrai REST calls: two endpoints, explicit methods, and no SDK to install. This keeps the compliance boundary in one Java class and the domain service readable.
 
 ## Run the example
 
@@ -27,7 +29,7 @@ javac -d out src/main/java/example/*.java
 java -cp out example.Main
 ```
 
-`Main` writes checkout and fulfillment entries for `ord-1007`, then searches with `q=ord-1007`. Ingest writes include a client idempotency key derived from the order, so a retry represents the same business event.
+`Main` writes checkout and fulfillment entries for `ord-1007`, then searches with `q=ord-1007`. Ingest writes carry a client idempotency key derived from the order. A retry after timeout is the same business event, not a duplicate delivery. Missed jobs and dupes have paged me before; this pattern closes that gap.
 
 ## Layering
 
